@@ -16,52 +16,59 @@ public class HealthCoachService {
     private final HealthCoachRepository healthCoachRepository;
     private final PasswordEncoder passwordEncoder;
     private final HealthCoachMapper healthCoachMapper;
+    private final JwtService jwtService; // <-- 1. INJECT JwtService
 
     public HealthCoachService(HealthCoachRepository healthCoachRepository,
                               PasswordEncoder passwordEncoder,
-                              HealthCoachMapper healthCoachMapper) {
+                              HealthCoachMapper healthCoachMapper,
+                              JwtService jwtService) {
         this.healthCoachRepository = healthCoachRepository;
         this.passwordEncoder = passwordEncoder;
         this.healthCoachMapper = healthCoachMapper;
+        this.jwtService = jwtService;
     }
 
     /**
-     * Registers a new HealthCoach using DTOs.
+     * Registers a new HealthCoach.
      */
     public HealthCoachResponseDTO registerCoach(HealthCoachRequestDTO requestDTO) {
-        // Check if username or email is already taken
         if (healthCoachRepository.findByUsername(requestDTO.getUsername()).isPresent() ||
                 healthCoachRepository.findByEmail(requestDTO.getEmail()).isPresent()) {
             throw new IllegalArgumentException("Username or email already in use");
         }
-
-        // Convert DTO to entity
         HealthCoach newCoach = healthCoachMapper.toEntity(requestDTO);
-
-        // Hash and set password
         newCoach.setPassword(passwordEncoder.encode(requestDTO.getPassword()));
-
-        // Save and convert to Response DTO
         HealthCoach savedCoach = healthCoachRepository.save(newCoach);
-        return healthCoachMapper.toResponseDTO(savedCoach);
+        String token = jwtService.generateToken(savedCoach);
+        HealthCoachResponseDTO responseDTO = healthCoachMapper.toResponseDTO(savedCoach);
+        responseDTO.setToken(token);
+
+        return responseDTO;
     }
 
     /**
-     * Authenticates a HealthCoach and returns a safe DTO.
+     * Authenticates a HealthCoach and returns a DTO with a token.
      */
     public HealthCoachResponseDTO loginCoach(LoginRequest loginRequest) {
-        // Find user by username
-        HealthCoach coach = healthCoachRepository.findByUsername(loginRequest.getUsername())
-                .orElseThrow(() -> new EntityNotFoundException("Invalid username or password"));
+        // --- 1. FIND COACH BY USERNAME OR EMAIL ---
+        String identifier = loginRequest.getLoginIdentifier();
 
-        // Check password
+        // Find coach by username OR email
+        HealthCoach coach = healthCoachRepository.findByUsername(identifier) //
+                .or(() -> healthCoachRepository.findByEmail(identifier)) //
+                .orElseThrow(() -> new EntityNotFoundException("Invalid credentials"));
+        // --- END OF NEW LOGIC ---
+
+        // --- 2. CHECK PASSWORD ---
         if (passwordEncoder.matches(loginRequest.getPassword(), coach.getPassword())) {
-            // Passwords match, return the safe DTO
-            return healthCoachMapper.toResponseDTO(coach);
+            // Passwords match.
+            String token = jwtService.generateToken(coach);
+            HealthCoachResponseDTO responseDTO = healthCoachMapper.toResponseDTO(coach);
+            responseDTO.setToken(token);
+
+            return responseDTO;
         } else {
-            // Passwords don't match
-            throw new IllegalArgumentException("Invalid username or password");
+            throw new IllegalArgumentException("Invalid credentials");
         }
     }
 }
-

@@ -2,6 +2,7 @@ package com.pitt.hari_exercise_tracker.service;
 
 import com.pitt.hari_exercise_tracker.dto.ExerciseRecordRequestDTO;
 import com.pitt.hari_exercise_tracker.dto.ExerciseRecordResponseDTO;
+import com.pitt.hari_exercise_tracker.dto.ExerciseReportDTO;
 import com.pitt.hari_exercise_tracker.mapper.ExerciseRecordMapper;
 import com.pitt.hari_exercise_tracker.models.AppUser;
 import com.pitt.hari_exercise_tracker.models.ExerciseRecord;
@@ -11,7 +12,7 @@ import jakarta.persistence.EntityNotFoundException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
-import java.time.ZoneOffset;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -64,20 +65,19 @@ public class ExerciseRecordService {
     }
 
     // Helper to get the start of today in UTC
-    private java.time.Instant getStartOfTodayUtc() {
-        return LocalDate.now().atStartOfDay().toInstant(ZoneOffset.UTC);
+    private LocalDateTime getStartOfTodayLocal() {
+        return LocalDate.now().atStartOfDay();
     }
-
     /**
      * Gets all records for a user for *today*.
      */
     public List<ExerciseRecordResponseDTO> getRecordsForToday(Long userId) {
-        java.time.Instant startOfDay = getStartOfTodayUtc();
-        java.time.Instant endOfDay = startOfDay.plusSeconds(24 * 60 * 60); // 24 hours
+        LocalDateTime startOfDay = getStartOfTodayLocal();
+        LocalDateTime endOfDay = startOfDay.plusDays(1);
 
         return exerciseRecordRepository.findByAppUserIdAndDateTimeBetweenOrderByDateTimeDesc(userId, startOfDay, endOfDay)
                 .stream()
-                .map(ExerciseRecordMapper::toResponseDTO) // Convert each entity to a DTO
+                .map(ExerciseRecordMapper::toResponseDTO)
                 .collect(Collectors.toList());
     }
 
@@ -85,11 +85,11 @@ public class ExerciseRecordService {
      * Gets all records for a user *before* today.
      */
     public List<ExerciseRecordResponseDTO> getRecordHistory(Long userId) {
-        java.time.Instant startOfDay = getStartOfTodayUtc();
+        LocalDateTime startOfDay = getStartOfTodayLocal();
 
         return exerciseRecordRepository.findByAppUserIdAndDateTimeBeforeOrderByDateTimeDesc(userId, startOfDay)
                 .stream()
-                .map(ExerciseRecordMapper::toResponseDTO) // Convert each entity to a DTO
+                .map(ExerciseRecordMapper::toResponseDTO)
                 .collect(Collectors.toList());
     }
 
@@ -102,5 +102,38 @@ public class ExerciseRecordService {
                 .map(ExerciseRecordMapper::toResponseDTO) // Convert each entity to a DTO
                 .collect(Collectors.toList());
     }
+
+    /**
+     * Deletes an exercise record by ID.
+     */
+    public void deleteExerciseRecord(Long recordId) {
+        ExerciseRecord existingRecord = exerciseRecordRepository.findById(recordId)
+                .orElseThrow(() -> new EntityNotFoundException("Record not found with id: " + recordId));
+
+        exerciseRecordRepository.delete(existingRecord);
+    }
+
+    /**
+     * Gets a 7-day report for a user.
+     */
+    public ExerciseReportDTO get7DayReport(Long userId) {
+        LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(7);
+        LocalDateTime now = LocalDateTime.now();
+
+        List<ExerciseRecord> records = exerciseRecordRepository
+                .findByAppUserIdAndDateTimeAfterOrderByDateTimeDesc(userId, sevenDaysAgo);
+
+        int totalExercises = records.size();
+        int totalMinutes = records.stream()
+                .mapToInt(record -> record.getExerciseDuration() != null ? record.getExerciseDuration() : 0)
+                .sum();
+
+        String startDate = sevenDaysAgo.toString();
+        String endDate = now.toString();
+
+        return new ExerciseReportDTO(totalExercises, totalMinutes, startDate, endDate);
+    }
+
+
 }
 

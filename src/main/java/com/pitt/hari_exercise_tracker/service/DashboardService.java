@@ -7,8 +7,7 @@ import com.pitt.hari_exercise_tracker.repository.AppUserRepository;
 import com.pitt.hari_exercise_tracker.repository.ExerciseRecordRepository;
 import org.springframework.stereotype.Service;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
+import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -34,14 +33,14 @@ public class DashboardService {
         List<AppUser> allUsers = appUserRepository.findAll();
 
         // 2. Define the "alert" threshold (2 days ago)
-        Instant alertThreshold = Instant.now().minus(2, ChronoUnit.DAYS);
+        LocalDateTime alertThreshold = LocalDateTime.now().minusDays(2);
 
         // 3. Map users to DTOs
         List<DashboardUserDTO> dashboardUsers = allUsers.stream().map(user -> {
             // Find the last record for this user
             Optional<ExerciseRecord> lastRecordOpt = exerciseRecordRepository.findFirstByAppUserIdOrderByDateTimeDesc(user.getId());
 
-            Instant lastReportTime = null;
+            LocalDateTime lastReportTime = null;
             boolean alert = true; // Default to alert
 
             if (lastRecordOpt.isPresent()) {

@@ -4,7 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 
 /**
  * A DTO to represent a single user's row on the coach's dashboard.
@@ -17,5 +17,5 @@ public class DashboardUserDTO {
     private Long userId;
     private String username;
     private boolean alert; // true if no report in > 2 days
-    private Instant lastTimeOfReport;
+    private LocalDateTime lastTimeOfReport;
 }

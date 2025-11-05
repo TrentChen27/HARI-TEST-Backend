@@ -2,7 +2,7 @@ package com.pitt.hari_exercise_tracker.dto;
 
 import com.pitt.hari_exercise_tracker.models.AppUser;
 import lombok.Data;
-import java.time.Instant;
+import java.time.LocalDateTime;
 
 /**
  * Data Transfer Object for *sending* ExerciseRecord data back to the client.
@@ -13,12 +13,12 @@ public class ExerciseRecordResponseDTO {
 
     private Long id;
     private String exerciseType;
-    private String exerciseDuration;
+    private Integer exerciseDuration;
     private String exerciseLocation;
     private String exerciseNotes;
     private String exerciseIntensity;
     private String caloriesBurned;
-    private Instant dateTime;
+    private LocalDateTime dateTime;
     private Integer sets;
     private Integer reps;
     private Double weightKg;

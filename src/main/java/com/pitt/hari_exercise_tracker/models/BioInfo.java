@@ -7,7 +7,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 
 /**
  * An @Embeddable class.
@@ -20,7 +20,7 @@ import java.time.Instant;
 @Embeddable // The magic annotation!
 public class BioInfo {
 
-    private Instant birthDate;
+    private LocalDateTime birthDate;
 
     // --- Core physical metrics from your list ---
     private Double heightCm;

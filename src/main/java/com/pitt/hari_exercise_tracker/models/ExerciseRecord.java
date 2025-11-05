@@ -7,7 +7,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 
 @Data
 @NoArgsConstructor
@@ -22,7 +22,8 @@ public class ExerciseRecord {
 
     private String exerciseType;
 
-    private String exerciseDuration;
+    @Column(name = "exercise_duration")
+    private Integer exerciseDuration;
 
     private String exerciseLocation;
 
@@ -34,12 +35,11 @@ public class ExerciseRecord {
     private Double caloriesBurned;
 
     @Column(nullable = false)
-    private Instant dateTime;
+    private LocalDateTime dateTime;
 
     private Integer sets;
     private Integer reps;
     private Double weightKg;
-
 
     private String imageUrl;
 

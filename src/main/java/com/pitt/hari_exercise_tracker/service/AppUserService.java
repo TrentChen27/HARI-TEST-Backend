@@ -11,78 +11,97 @@ import jakarta.persistence.EntityNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 
 @Service
 public class AppUserService {
 
     private final AppUserRepository appUserRepository;
     private final PasswordEncoder passwordEncoder;
-    private final AppUserMapper appUserMapper; // Inject the mapper
+    private final AppUserMapper appUserMapper;
+    private final JwtService jwtService; // <-- 1. INJECT JwtService
 
     public AppUserService(AppUserRepository appUserRepository,
                           PasswordEncoder passwordEncoder,
-                          AppUserMapper appUserMapper) { // Add mapper
+                          AppUserMapper appUserMapper,
+                          JwtService jwtService) { // <-- 2. ADD to constructor
         this.appUserRepository = appUserRepository;
         this.passwordEncoder = passwordEncoder;
-        this.appUserMapper = appUserMapper; // Init mapper
+        this.appUserMapper = appUserMapper;
+        this.jwtService = jwtService; // <-- 3. INITIALIZE it
     }
 
     /**
      * Registers a new AppUser from a DTO.
      */
     public AppUserResponseDTO registerUser(AppUserRequestDTO requestDTO) {
-        // Check if user already exists
         if (appUserRepository.findByUsername(requestDTO.getUsername()).isPresent() ||
                 appUserRepository.findByEmail(requestDTO.getEmail()).isPresent()) {
             throw new IllegalArgumentException("Username or email already in use");
         }
 
-        // Create new AppUser entity
-        AppUser newUser = appUserMapper.toEntity(requestDTO); // Use mapper
-        newUser.setPassword(passwordEncoder.encode(requestDTO.getPassword())); // Hash password
-        newUser.setCreatedDate(Instant.now());
+        AppUser newUser = appUserMapper.toEntity(requestDTO);
+        newUser.setPassword(passwordEncoder.encode(requestDTO.getPassword()));
+        newUser.setCreatedDate(LocalDateTime.now());
 
         AppUser savedUser = appUserRepository.save(newUser);
-        return appUserMapper.toResponseDTO(savedUser); // Use mapper
+
+        String token = jwtService.generateToken(savedUser);
+        AppUserResponseDTO responseDTO = appUserMapper.toResponseDTO(savedUser);
+        responseDTO.setToken(token);
+
+        return responseDTO;
     }
 
     /**
      * Authenticates a user with username/password and links their deviceUuid.
      */
     public AppUserResponseDTO loginWithPassword(AppUserLoginRequestDTO loginRequest) {
-        // Find user by username
-        AppUser user = appUserRepository.findByUsername(loginRequest.getUsername())
-                .orElseThrow(() -> new EntityNotFoundException("Invalid username or password"));
+        // --- 1. FIND USER BY USERNAME OR EMAIL ---
+        String identifier = loginRequest.getLoginIdentifier();
 
-        // Check password
+        // Find user by username OR email
+        AppUser user = appUserRepository.findByUsername(identifier) //
+                .or(() -> appUserRepository.findByEmail(identifier)) //
+                .orElseThrow(() -> new EntityNotFoundException("Invalid credentials"));
+        // --- END OF NEW LOGIC ---
+
+        // --- 2. CHECK PASSWORD ---
         if (passwordEncoder.matches(loginRequest.getPassword(), user.getPassword())) {
             // Passwords match.
-            // Update their deviceUuid and last login time
             user.setDeviceUuid(loginRequest.getDeviceUuid());
-            user.setLastLoginDate(Instant.now());
+            user.setLastLoginDate(LocalDateTime.now());
             AppUser savedUser = appUserRepository.save(user);
 
-            // Return the safe DTO
-            return appUserMapper.toResponseDTO(savedUser);
+            // --- 3. GENERATE TOKEN (unchanged) ---
+            String token = jwtService.generateToken(savedUser);
+            AppUserResponseDTO responseDTO = appUserMapper.toResponseDTO(savedUser);
+            responseDTO.setToken(token);
+
+            return responseDTO;
         } else {
-            // Passwords don't match
-            throw new IllegalArgumentException("Invalid username or password");
+            throw new IllegalArgumentException("Invalid credentials");
         }
     }
 
     /**
      * Authenticates a user automatically using their deviceUuid.
+     * (This method is UPDATED)
      */
     public AppUserResponseDTO loginWithUuid(UuidLoginRequestDTO loginRequest) {
-        // Find user by deviceUuid
         AppUser user = appUserRepository.findByDeviceUuid(loginRequest.getDeviceUuid())
                 .orElseThrow(() -> new EntityNotFoundException("Device not recognized. Please log in."));
 
-        // Device found. Update last login time and return.
-        user.setLastLoginDate(Instant.now());
+        user.setLastLoginDate(LocalDateTime.now());
         AppUser savedUser = appUserRepository.save(user);
-        return appUserMapper.toResponseDTO(savedUser);
+
+        // --- 6. GENERATE TOKEN ---
+        String token = jwtService.generateToken(savedUser);
+
+        // --- 7. MAP TO DTO AND SET TOKEN ---
+        AppUserResponseDTO responseDTO = appUserMapper.toResponseDTO(savedUser);
+        responseDTO.setToken(token); // Add the token to the response
+
+        return responseDTO; // Return DTO with token
     }
 }
-
