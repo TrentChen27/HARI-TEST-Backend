@@ -14,7 +14,7 @@ public interface AppUserRepository extends JpaRepository<AppUser, Long> {
     // "SELECT * FROM app_users WHERE email = ?"
     Optional<AppUser> findByEmail(String email);
 
-    // "SELECT * FROM app_users WHERE device_uuid = ?"
-    Optional<AppUser> findByDeviceUuid(String deviceUuid);
+//    // "SELECT * FROM app_users WHERE device_uuid = ?"
+//    Optional<AppUser> findByDeviceUuid(String deviceUuid);
 
 }

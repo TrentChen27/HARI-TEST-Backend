@@ -16,8 +16,7 @@ public class AppUserMapper {
         AppUser entity = new AppUser();
         entity.setUsername(dto.getUsername());
         entity.setEmail(dto.getEmail());
-        entity.setDeviceUuid(dto.getDeviceUuid());
-        // Password is set in the service
+//        entity.setDeviceUuid(dto.getDeviceUuid());
         return entity;
     }
 
@@ -26,7 +25,7 @@ public class AppUserMapper {
         dto.setId(user.getId());
         dto.setUsername(user.getUsername());
         dto.setEmail(user.getEmail());
-        dto.setDeviceUuid(user.getDeviceUuid());
+//        dto.setDeviceUuid(user.getDeviceUuid());
         dto.setFirstName(user.getFirstName());
         dto.setLastName(user.getLastName());
         dto.setCreatedDate(user.getCreatedDate());
