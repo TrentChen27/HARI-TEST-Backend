@@ -35,8 +35,12 @@ public class AppUser implements UserDetails {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(nullable = false, unique = true)
-    private String deviceUuid;
+//    @Column(nullable = false, unique = true)
+//    private String deviceUuid;
+
+    @OneToMany(mappedBy = "appUser", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonIgnore // Prevent infinite loops
+    private Set<UserDevice> devices;
 
     private String firstName;
 

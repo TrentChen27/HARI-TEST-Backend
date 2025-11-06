@@ -17,5 +17,8 @@ public class DashboardUserDTO {
     private Long userId;
     private String username;
     private boolean alert; // true if no report in > 2 days
+    private String alertLevel; // "high", "medium", "low" or ""
     private LocalDateTime lastTimeOfReport;
+    private LocalDateTime lastLoginTime;
+    private LocalDateTime accountCreationTime;
 }

@@ -19,6 +19,10 @@ public class DashboardService {
     private final AppUserRepository appUserRepository;
     private final ExerciseRecordRepository exerciseRecordRepository;
 
+    private final Integer MAX_DAYS_NO_REPORT_ALERT = 7;
+    private final Integer MID_DAYS_NO_REPORT_ALERT = 4;
+    private final Integer LOW_DAYS_NO_REPORT_ALERT = 2;
+
     public DashboardService(AppUserRepository appUserRepository, ExerciseRecordRepository exerciseRecordRepository) {
         this.appUserRepository = appUserRepository;
         this.exerciseRecordRepository = exerciseRecordRepository;
@@ -34,6 +38,7 @@ public class DashboardService {
 
         // 2. Define the "alert" threshold (2 days ago)
         LocalDateTime alertThreshold = LocalDateTime.now().minusDays(2);
+        LocalDateTime now = LocalDateTime.now();
 
         // 3. Map users to DTOs
         List<DashboardUserDTO> dashboardUsers = allUsers.stream().map(user -> {
@@ -42,21 +47,51 @@ public class DashboardService {
 
             LocalDateTime lastReportTime = null;
             boolean alert = true; // Default to alert
+            String alertLevel = "";
 
             if (lastRecordOpt.isPresent()) {
                 lastReportTime = lastRecordOpt.get().getDateTime();
-                // If their last report was *after* the threshold, they are NOT on alert
-                if (lastReportTime.isAfter(alertThreshold)) {
+                // Calculate days since last report
+                long daysSinceReport = java.time.Duration.between(lastReportTime, now).toDays();
+
+                if (daysSinceReport >= MAX_DAYS_NO_REPORT_ALERT) {
+                    alertLevel = "high";
+                } else if (daysSinceReport >= MID_DAYS_NO_REPORT_ALERT) {
+                    alertLevel = "medium";
+                } else if (daysSinceReport >= LOW_DAYS_NO_REPORT_ALERT) {
+                    alertLevel = "low";
+                } else {
                     alert = false;
+                    alertLevel = "";
+                }
+            } else {
+                // No reports yet - check account age
+                long daysSinceCreation = java.time.Duration.between(user.getCreatedDate(), now).toDays();
+
+                if (user.getCreatedDate().isAfter(alertThreshold)) {
+                    // Account is newer than 2 days - no alert yet
+                    alert = false;
+                    alertLevel = "";
+                } else if (daysSinceCreation >= 7) {
+                    alert = true;
+                    alertLevel = "high";
+                } else if (daysSinceCreation >= 4) {
+                    alert = true;
+                    alertLevel = "medium";
+                } else {
+                    alert = true;
+                    alertLevel = "low";
                 }
             }
-            // If they have no record (lastReportTime is null), alert remains true.
 
             return new DashboardUserDTO(
                     user.getId(),
                     user.getUsername(),
                     alert,
-                    lastReportTime
+                    alertLevel,
+                    lastReportTime,
+                    user.getLastLoginDate(),
+                    user.getCreatedDate()
             );
         }).collect(Collectors.toList());
 
@@ -69,9 +104,12 @@ public class DashboardService {
     /**
      * Custom Comparator to sort the dashboard.
      * Rules:
-     * 1. Users with alerts (true) come before users without (false).
-     * 2. If both users have alerts, the one who reported *longer* ago comes first (nulls, then ascending time).
-     * 3. If neither user has an alert, the one who reported *most recently* comes first (descending time).
+     * 1. Users with alerts come first.
+     * 2. Among users with alerts:
+     *   - Users who have never reported come first, sorted by "active days" (accountCreation to lastLogin) descending.
+     *   - Then users who have reported, sorted by oldest report first (ascending).
+     * 3. Among users without alerts:
+     *  - Sorted by most recent report first (descending).
      */
     private static class DashboardUserComparator implements Comparator<DashboardUserDTO> {
         @Override
@@ -83,21 +121,30 @@ public class DashboardService {
             if (!u1.isAlert() && u2.isAlert()) {
                 return 1; // u2 comes before u1
             }
-
             // At this point, both users have the same alert status.
-
             // Rule 2: Both users HAVE alerts
             if (u1.isAlert()) {
-                // If one user has *never* reported, they come first
-                if (u1.getLastTimeOfReport() == null && u2.getLastTimeOfReport() != null) return -1;
-                if (u1.getLastTimeOfReport() != null && u2.getLastTimeOfReport() == null) return 1;
-                if (u1.getLastTimeOfReport() == null) return 0; // Both never reported
-
+                // If both have never reported, compare by "active days"
+                if (u1.getLastTimeOfReport() == null && u2.getLastTimeOfReport() == null) {
+                    // User with more "active days" (lastLogin - accountCreation) comes first
+                    long u1ActiveDays = java.time.Duration.between(u1.getAccountCreationTime(), u1.getLastLoginTime()).toDays();
+                    long u2ActiveDays = java.time.Duration.between(u2.getAccountCreationTime(), u2.getLastLoginTime()).toDays();
+                    return Long.compare(u2ActiveDays, u1ActiveDays); // Descending order
+                }
+                // If one user has never reported, they come first
+                if (u1.getLastTimeOfReport() == null) return -1;
+                if (u2.getLastTimeOfReport() == null) return 1;
                 // Both have reported, sort by oldest report first (ascending)
                 return u1.getLastTimeOfReport().compareTo(u2.getLastTimeOfReport());
             }
-
             // Rule 3: Both users do NOT have alerts
+            // Handle null cases first
+            if (u1.getLastTimeOfReport() == null && u2.getLastTimeOfReport() == null) {
+                return 0; // Both null, consider equal
+            }
+            if (u1.getLastTimeOfReport() == null) return 1; // Null goes to end
+            if (u2.getLastTimeOfReport() == null) return -1; // Null goes to end
+
             // Sort by most recent report first (descending)
             return u2.getLastTimeOfReport().compareTo(u1.getLastTimeOfReport());
         }

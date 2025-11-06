@@ -6,7 +6,9 @@ import com.pitt.hari_exercise_tracker.dto.AppUserResponseDTO;
 import com.pitt.hari_exercise_tracker.dto.UuidLoginRequestDTO;
 import com.pitt.hari_exercise_tracker.mapper.AppUserMapper;
 import com.pitt.hari_exercise_tracker.models.AppUser;
+import com.pitt.hari_exercise_tracker.models.UserDevice;
 import com.pitt.hari_exercise_tracker.repository.AppUserRepository;
+import com.pitt.hari_exercise_tracker.repository.UserDeviceRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -19,20 +21,23 @@ public class AppUserService {
     private final AppUserRepository appUserRepository;
     private final PasswordEncoder passwordEncoder;
     private final AppUserMapper appUserMapper;
-    private final JwtService jwtService; // <-- 1. INJECT JwtService
+    private final JwtService jwtService;
+    private final UserDeviceRepository userDeviceRepository;
 
     public AppUserService(AppUserRepository appUserRepository,
                           PasswordEncoder passwordEncoder,
                           AppUserMapper appUserMapper,
-                          JwtService jwtService) { // <-- 2. ADD to constructor
+                          JwtService jwtService,
+                          UserDeviceRepository userDeviceRepository) {
         this.appUserRepository = appUserRepository;
         this.passwordEncoder = passwordEncoder;
         this.appUserMapper = appUserMapper;
-        this.jwtService = jwtService; // <-- 3. INITIALIZE it
+        this.jwtService = jwtService;
+        this.userDeviceRepository = userDeviceRepository;
     }
 
     /**
-     * Registers a new AppUser from a DTO.
+     * Registers a user AND creates their first device link.
      */
     public AppUserResponseDTO registerUser(AppUserRequestDTO requestDTO) {
         if (appUserRepository.findByUsername(requestDTO.getUsername()).isPresent() ||
@@ -43,41 +48,38 @@ public class AppUserService {
         AppUser newUser = appUserMapper.toEntity(requestDTO);
         newUser.setPassword(passwordEncoder.encode(requestDTO.getPassword()));
         newUser.setCreatedDate(LocalDateTime.now());
-
         AppUser savedUser = appUserRepository.save(newUser);
+
+        UserDevice userDevice = new UserDevice(savedUser, requestDTO.getDeviceUuid());
+        userDeviceRepository.save(userDevice);
 
         String token = jwtService.generateToken(savedUser);
         AppUserResponseDTO responseDTO = appUserMapper.toResponseDTO(savedUser);
         responseDTO.setToken(token);
-
         return responseDTO;
     }
 
-    /**
-     * Authenticates a user with username/password and links their deviceUuid.
-     */
     public AppUserResponseDTO loginWithPassword(AppUserLoginRequestDTO loginRequest) {
-        // --- 1. FIND USER BY USERNAME OR EMAIL ---
-        String identifier = loginRequest.getLoginIdentifier();
-
-        // Find user by username OR email
-        AppUser user = appUserRepository.findByUsername(identifier) //
-                .or(() -> appUserRepository.findByEmail(identifier)) //
+        AppUser user = appUserRepository.findByUsername(loginRequest.getLoginIdentifier())
+                .or(() -> appUserRepository.findByEmail(loginRequest.getLoginIdentifier()))
                 .orElseThrow(() -> new EntityNotFoundException("Invalid credentials"));
-        // --- END OF NEW LOGIC ---
 
-        // --- 2. CHECK PASSWORD ---
         if (passwordEncoder.matches(loginRequest.getPassword(), user.getPassword())) {
-            // Passwords match.
-            user.setDeviceUuid(loginRequest.getDeviceUuid());
             user.setLastLoginDate(LocalDateTime.now());
             AppUser savedUser = appUserRepository.save(user);
 
-            // --- 3. GENERATE TOKEN (unchanged) ---
+            if (loginRequest.getDeviceUuid() != null) {
+                UserDevice userDevice = userDeviceRepository.findByAppUserAndDeviceUuid(savedUser, loginRequest.getDeviceUuid())
+                        .orElse(new UserDevice(savedUser, loginRequest.getDeviceUuid()));
+
+                // --- 2. UPDATE THIS LINE ---
+                userDevice.setLastUsed(LocalDateTime.now());
+                userDeviceRepository.save(userDevice);
+            }
+
             String token = jwtService.generateToken(savedUser);
             AppUserResponseDTO responseDTO = appUserMapper.toResponseDTO(savedUser);
             responseDTO.setToken(token);
-
             return responseDTO;
         } else {
             throw new IllegalArgumentException("Invalid credentials");
@@ -85,23 +87,22 @@ public class AppUserService {
     }
 
     /**
-     * Authenticates a user automatically using their deviceUuid.
-     * (This method is UPDATED)
+     * Logs in the MOST RECENT user associated with this device.
      */
     public AppUserResponseDTO loginWithUuid(UuidLoginRequestDTO loginRequest) {
-        AppUser user = appUserRepository.findByDeviceUuid(loginRequest.getDeviceUuid())
+        UserDevice userDevice = userDeviceRepository.findFirstByDeviceUuidOrderByLastUsedDesc(loginRequest.getDeviceUuid())
                 .orElseThrow(() -> new EntityNotFoundException("Device not recognized. Please log in."));
 
+        AppUser user = userDevice.getAppUser();
+
         user.setLastLoginDate(LocalDateTime.now());
-        AppUser savedUser = appUserRepository.save(user);
+        userDevice.setLastUsed(LocalDateTime.now());
+        appUserRepository.save(user);
+        userDeviceRepository.save(userDevice);
 
-        // --- 6. GENERATE TOKEN ---
-        String token = jwtService.generateToken(savedUser);
-
-        // --- 7. MAP TO DTO AND SET TOKEN ---
-        AppUserResponseDTO responseDTO = appUserMapper.toResponseDTO(savedUser);
-        responseDTO.setToken(token); // Add the token to the response
-
-        return responseDTO; // Return DTO with token
+        String token = jwtService.generateToken(user);
+        AppUserResponseDTO responseDTO = appUserMapper.toResponseDTO(user);
+        responseDTO.setToken(token);
+        return responseDTO;
     }
 }
