@@ -61,7 +61,8 @@ public class SecurityConfig {
                 "http://localhost:4200",
                 "http://10.0.0.185:8100",
                 "http://10.4.26.236:8100",
-                "http://localhost"
+                "http://localhost",
+                "https://freida-wiry-jasiah.ngrok-free.dev"
         ));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
